@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="favicon.ico" type="image/x-icon" />      
+  <title>Meta blobs - Blob #9</title>
+  <link rel="stylesheet" href="blob.css" type="text/css">
+  </style>
+</head>
+<body>
+  <div id="panel">
+    <p>#9</p>
+    <a href="index.html">
+<svg width="35" height="35" version="1.1" viewBox="0 0 13.229166 13.229167" xmlns="http://www.w3.org/2000/svg"><g transform="translate(0 -283.77)"><path transform="matrix(.26458 0 0 .26458 0 283.77)" d="m25 5l-20 15v25h5v-23l15-11 15 11v18h-15v-10h5v-5h-10v15h-5v5h25 5v-25l-20-15z" style="paint-order:normal"/></g></svg>
+    </a>
+    <a href="https://github.com/jblanper" target="_blank">
+<svg width="35" height="35" version="1.1" viewBox="0 0 13.229166 13.229167" xmlns="http://www.w3.org/2000/svg"><g transform="translate(0 -283.77)"><path d="m6.6208 286.68-1.2972 7.4083h1.3656l1.2968-7.4083z" style="paint-order:normal"/><path d="m4.433 287.69c-1.3008 0.75108-2.6017 1.502-3.9026 2.2531v0.58497c-0.013266 0.11065 0.018061 0.24834 0.004134 0.30954 1.2995 0.75025 2.599 1.5003 3.8985 2.2505v-1.4769c-0.70558-0.40737-1.4111-0.81477-2.1167-1.2222 0.70558-0.40737 1.4111-0.81478 2.1167-1.2221z" style="paint-order:normal"/><path d="m8.794 287.69c1.3008 0.75108 2.6017 1.502 3.9026 2.2531v0.58497c0.01327 0.11065-0.01806 0.24834-0.0041 0.30954-1.2995 0.75025-2.599 1.5003-3.8985 2.2505v-1.4769c0.70558-0.40737 1.4111-0.81477 2.1167-1.2222-0.70558-0.40737-1.4111-0.81478-2.1167-1.2221z" style="paint-order:normal"/></g></svg>
+    </a>
+  </div>
+  <canvas></canvas>
+
+  <script id="vs" type="notjs">
+attribute vec4 position;
+
+void main() {
+  gl_Position = position;
+}
+  </script>
+
+  <script id="fs" type="notjs">
+precision mediump float;
+uniform float time;
+uniform vec2 resolution;
+
+mat2 rotate(float a) {
+  return mat2(cos(a), -sin(a), sin(a), cos(a));
+}
+
+float smin( float a, float b, float k ) {
+  float h = max( k-abs(a-b), 0.0 )/k;
+  return min( a, b ) - h*h*h*k*(1.0/6.0);
+}
+
+float sphereSDF (vec3 p, float r) {
+  return length(p) - r;
+}
+
+float displacement(vec3 p, float n) {
+  return sin(p.x * n) * cos(p.y * n + n) - sin(p.z + p.y * n);
+}
+
+float map (vec3 p) {
+  vec3 p1 = p;
+
+  float s1 = sphereSDF(p1, 1.3);
+
+  p.z -= time * .5 + sin((p.x * p.z) + time * .4);
+  p.xy *= rotate(time * .2);
+  vec3 c = vec3(1.4, 1.4, 2.);
+  p = mod(p, c) - .5 * c;
+
+  float s2 = sphereSDF(p, .6);
+  s2 += sin((p.x + p.y * p.z) * 20. + time * 2.) * .03 + cos(length(p.x - p.y * p.z) * 65. - time * .8) * .01;
+
+  return max(s1 * .5 + displacement(p1, 8. * (sin(time * .7) * .7 + .4)) * .1, -s2 * .4);
+}
+
+float trace (vec3 ro, vec3 rd) {
+  float e = .0001;
+  float d = e * 2.;
+  float t = 0.;
+  for (int i = 0; i < 40; i++) {
+    if (d < e || t > 50.) continue;
+    d = map(ro + rd * t);
+    t += d * (sin(time * .5) * .3 + .6); // + .5 o .7
+  }
+  return t;
+}
+
+vec3 getNormal (vec3 p) {
+  float d = map(p);
+  vec2 e = vec2(.1, 0.);
+
+  return normalize(d - vec3(
+    map(p - e.xyy),
+    map(p - e.yxy),
+    map(p - e.yyx)));
+}
+
+float getLight (vec3 p, vec3 light, vec3 rd, float lOcclusion) {
+  vec3 nor = getNormal(p);
+  float ambient = clamp(.5 + .5 * nor.y, 0., 1.) * .1;
+  float diffuse = clamp(dot(nor, light), 0., 1.) * .8;
+  vec3 half_way = normalize(-rd + light);
+  float specular = pow(clamp(dot(half_way, nor), 0.0, 1.0), 16.) * diffuse * 1.2;
+
+  return (ambient + diffuse + specular) * lOcclusion;
+}
+
+void main (void) {
+  vec2 uv = (gl_FragCoord.xy / resolution.xy) * 2.0 - 1.0;
+  uv.x *= resolution.x / resolution.y;
+  vec3 color;
+
+  // camera
+  vec3 ro = vec3(0., 2., 5.);
+  vec3 rd = normalize(vec3(uv.x, uv.y - .8, -1.8));
+  ro.xz *= rotate(time * .3);
+  rd.xz *= rotate(time * .3);
+
+  float t = trace(ro, rd);
+  vec3 p = ro + rd * t;
+
+  // texture
+  color += cos(dot(p.xy, uv) * 2. - time * .2) * .1;
+
+  // lights
+  vec3 light1 = normalize(vec3(3., 2., 1.));
+  vec3 light2 = normalize(vec3(3., 5., -2.));
+  light1.xz *= rotate(time);
+  light2.yz *= rotate(-time * .8);
+  color += getLight(p, light1, rd, 1.2) * vec3(.4, .6, .4);
+  color += getLight(p, light2, rd, 1.4) * vec3(.3, .3, .8);
+  color = mix(color, vec3(p.z, p.z * .2, .3), .4);
+  float l = sin(length(p) * 4.) * .5 + .7;
+  color = mix(color, vec3(l, .3, 1. - l), .2);
+  // color += vec3(l, .2, 1. - l) * .5;
+  // color += vec3(.6 + p.y * .3, .3 + p.x * .1, .4 + p.z * .5) * .3;
+  // color *= length(p.z) * .8;
+
+  float fog = 1. / (1. + t * t * .1);
+  color *= fog * 3.;
+
+  // if (t > 50.) color += .5 / length(uv);
+  // if (t > 50.) color *= 0.;
+
+  gl_FragColor = vec4(color, 1.);
+}
+  </script>
+
+  <script src="twgl.min.js"></script>
+
+  <script>
+    const gl = document.querySelector("canvas").getContext("webgl");
+    const programInfo = twgl.createProgramInfo(gl, ["vs", "fs"]);
+
+    const arrays = {
+      position: [-1, -1, 0, 1, -1, 0, -1, 1, 0, -1, 1, 0, 1, -1, 0, 1, 1, 0],
+    };
+    const bufferInfo = twgl.createBufferInfoFromArrays(gl, arrays);
+
+    function render(time) {
+      twgl.resizeCanvasToDisplaySize(gl.canvas);
+      gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+
+      const uniforms = {
+        time: time * 0.001,
+        resolution: [gl.canvas.width, gl.canvas.height],
+      };
+
+      gl.useProgram(programInfo.program);
+      twgl.setBuffersAndAttributes(gl, programInfo, bufferInfo);
+      twgl.setUniforms(programInfo, uniforms);
+      twgl.drawBufferInfo(gl, bufferInfo);
+
+      requestAnimationFrame(render);
+    }
+    requestAnimationFrame(render);
+  </script>
+</body>
+</html>

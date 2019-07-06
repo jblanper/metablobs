@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="favicon.ico" type="image/x-icon" />      
+  <title>Meta blobs - Blob #12</title>
+  <link rel="stylesheet" href="blob.css" type="text/css">
+  </style>
+</head>
+<body>
+  <div id="panel">
+    <p>#12</p>
+    <a href="index.html">
+<svg width="35" height="35" version="1.1" viewBox="0 0 13.229166 13.229167" xmlns="http://www.w3.org/2000/svg"><g transform="translate(0 -283.77)"><path transform="matrix(.26458 0 0 .26458 0 283.77)" d="m25 5l-20 15v25h5v-23l15-11 15 11v18h-15v-10h5v-5h-10v15h-5v5h25 5v-25l-20-15z" style="paint-order:normal"/></g></svg>
+    </a>
+    <a href="https://github.com/jblanper" target="_blank">
+<svg width="35" height="35" version="1.1" viewBox="0 0 13.229166 13.229167" xmlns="http://www.w3.org/2000/svg"><g transform="translate(0 -283.77)"><path d="m6.6208 286.68-1.2972 7.4083h1.3656l1.2968-7.4083z" style="paint-order:normal"/><path d="m4.433 287.69c-1.3008 0.75108-2.6017 1.502-3.9026 2.2531v0.58497c-0.013266 0.11065 0.018061 0.24834 0.004134 0.30954 1.2995 0.75025 2.599 1.5003 3.8985 2.2505v-1.4769c-0.70558-0.40737-1.4111-0.81477-2.1167-1.2222 0.70558-0.40737 1.4111-0.81478 2.1167-1.2221z" style="paint-order:normal"/><path d="m8.794 287.69c1.3008 0.75108 2.6017 1.502 3.9026 2.2531v0.58497c0.01327 0.11065-0.01806 0.24834-0.0041 0.30954-1.2995 0.75025-2.599 1.5003-3.8985 2.2505v-1.4769c0.70558-0.40737 1.4111-0.81477 2.1167-1.2222-0.70558-0.40737-1.4111-0.81478-2.1167-1.2221z" style="paint-order:normal"/></g></svg>
+    </a>
+  </div>
+  <canvas></canvas>
+
+  <script id="vs" type="notjs">
+attribute vec4 position;
+
+void main() {
+  gl_Position = position;
+}
+  </script>
+
+  <script id="fs" type="notjs">
+precision mediump float;
+uniform float time;
+uniform vec2 resolution;
+uniform sampler2D backbuffer;
+
+#define MAX_STEPS 80
+#define MAX_DIST 19.
+#define EPSILON .001
+
+mat2 rotate(float a) {
+  return mat2(cos(a), -sin(a), sin(a), cos(a));
+}
+
+float sphereSDF (vec3 p, vec3 c, float r) {
+  return length(c - p) - r;
+}
+
+float cubeSDF (vec3 p, vec3 c, vec3 dimensions, float borderRoundness) {
+  vec3 pos = abs(c - p) - dimensions;
+  return length(max(pos, 0.)) - borderRoundness + min(max(pos.x, max(pos.y, pos.z)), 0.);
+}
+
+float sceneSDF (vec3 p) {
+  float s1 = sphereSDF(p, vec3(0.), .8);
+
+  s1 += sin(cubeSDF(fract(p * 6. + cos(time * .08)) - .5, vec3(0.), vec3(4.), 1. * sin(time * .05)) * 18.) * .03;
+  s1 += cos((p.x * p.y + p.z * cos(time * .5)) * 20. - time) * (sin(time) * .01 + .05);
+  s1 += abs(max(p.z * p.y, 0.)) * 1.5;
+  s1 += (sin(p.x * 4. + dot(p, p) - (time * .2)) - cos(p.y * 2. - length(p) - (time * .5))) * .2;
+
+  return s1 * .3;
+}
+
+float raymarch (vec3 ro, vec3 rd) {
+  float depth = 0.;
+
+  for (int i = 0; i < MAX_STEPS; i++) {
+    vec3 ray = ro + rd * depth;
+    float dist = sceneSDF(ray);
+    if (dist < EPSILON) break;
+    depth += dist;
+    if (depth >= MAX_DIST) break;
+  }
+  return depth;
+}
+
+vec3 getNormal (vec3 p) {
+  float d = sceneSDF(p);
+  vec2 e = vec2(.01, 0.);
+
+  return normalize(d - vec3(
+    sceneSDF(p - e.xyy),
+    sceneSDF(p - e.yxy),
+    sceneSDF(p - e.yyx)));
+}
+
+struct Material {
+  float ambient;
+  float diffuse;
+  float specular;
+};
+
+float getLight (vec3 lightPos, vec3 p, vec3 rd, float lightOcclusion, Material material) {
+  // https://www.shadertoy.com/view/ll2GW1
+  vec3 light = normalize(lightPos - p);
+  vec3 normal = getNormal(p);
+
+  // phong reflection
+  float ambient = clamp(.5 + .5 * normal.y, 0., 1.);
+  float diffuse = clamp(dot(normal, light), 0., 1.);
+  vec3 half_way = normalize(-rd + light);
+  float specular = pow(clamp(dot(half_way, normal), 0.0, 1.0), 16.);
+
+  return (ambient * material.ambient * lightOcclusion) +
+   (diffuse * material.diffuse * lightOcclusion) +
+   (diffuse * specular * material.specular * lightOcclusion);
+}
+
+void main (void) {
+  vec2 uv = (gl_FragCoord.xy / resolution.xy) * 2.0 - 1.0;
+  uv.x *= resolution.x / resolution.y;
+
+  // camera
+  vec3 ro = vec3(0., 0., -5.);
+  ro.xz *= rotate(time * .2);
+  vec3 rd = normalize(vec3(uv.x, uv.y, 3.5));
+  rd.xz *= rotate(time * .2);
+  vec3 color = vec3(0.);
+
+  float d = raymarch(ro, rd);
+  vec3 ray = ro + rd * d;
+
+  if (d < MAX_DIST) {
+    vec3 light1 = vec3(2., 2., -4.);
+    light1.xz *= rotate(time);
+    float phong1 = getLight(light1, ray, rd, .8, Material(.3, .5, .6));
+    color += phong1;
+    vec3 light2 = vec3(5., 5., -2.);
+    light2.yz *= rotate(time);
+    float phong2 = getLight(light2, ray, rd, .4, Material(.2, .4, .8));
+    color -= phong2;
+    color += mix(color, vec3(0.), sin(smoothstep(.5, .9, max(abs(uv.x), abs(uv.y))) * 100. + time * .3) * .5 + .5);
+
+  } else {
+    color += mix(color, vec3(1.), sin(smoothstep(.5, .9, max(abs(uv.x), abs(uv.y))) * 100. + time * .3) * .5 + .5);
+  }
+
+  color += vec3(1. - length(uv)) * .2;
+
+  gl_FragColor = vec4(color, 1.);
+}
+  </script>
+
+  <script src="twgl.min.js"></script>
+
+  <script>
+    const gl = document.querySelector("canvas").getContext("webgl");
+    const programInfo = twgl.createProgramInfo(gl, ["vs", "fs"]);
+
+    const arrays = {
+      position: [-1, -1, 0, 1, -1, 0, -1, 1, 0, -1, 1, 0, 1, -1, 0, 1, 1, 0],
+    };
+    const bufferInfo = twgl.createBufferInfoFromArrays(gl, arrays);
+
+    function render(time) {
+      twgl.resizeCanvasToDisplaySize(gl.canvas);
+      gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+
+      const uniforms = {
+        time: time * 0.001,
+        resolution: [gl.canvas.width, gl.canvas.height],
+      };
+
+      gl.useProgram(programInfo.program);
+      twgl.setBuffersAndAttributes(gl, programInfo, bufferInfo);
+      twgl.setUniforms(programInfo, uniforms);
+      twgl.drawBufferInfo(gl, bufferInfo);
+
+      requestAnimationFrame(render);
+    }
+    requestAnimationFrame(render);
+  </script>
+</body>
+</html>

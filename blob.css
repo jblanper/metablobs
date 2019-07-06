@@ -1,0 +1,36 @@
+body {
+    font-family: helvetica, sans-serif;
+    margin: 0;
+    overflow: hidden;
+}
+
+canvas {
+    display: block;
+    width: 100vw;
+    height: 100vh;
+}
+
+#panel {
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 1;
+    background-color: white;
+    padding: 0.5em;
+    margin: 1em;
+}
+
+#panel p {
+    text-align: center;
+    margin: 0;
+    padding: 5px;
+}
+
+#panel svg {
+    display: block;
+    margin: auto;
+}
+
+#panel svg:hover path {
+    fill: #38b1b7;
+}
